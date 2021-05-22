@@ -12,12 +12,24 @@ public class KMMissionEditor : Editor
 {
     protected Vector2 descriptionScrollPos;
     protected int expandedComponentPoolIndex = -1;
+    private string errorMessage = null;
+    private string dmgString;
+
+    public void OnEnable()
+    {
+        dmgString = DMGMissionLoader.GetDmgString(serializedObject.targetObject as KMMission);
+        errorMessage = null;
+    }
 
     public override void OnInspectorGUI()
     {
+        bool validModification = true;
+
         if (target != null)
         {
             serializedObject.Update();
+
+            EditorGUI.BeginChangeCheck();
 
             //Basic mission meta-data
             EditorGUILayout.BeginHorizontal();
@@ -27,7 +39,8 @@ public class KMMissionEditor : Editor
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel("ID In-Game");
-            EditorGUILayout.SelectableLabel(string.Format("mod_{0}_{1}", ModConfig.ID, serializedObject.targetObject.name));
+            EditorGUILayout.SelectableLabel(string.Format("mod_{0}_{1}", ModConfig.ID,
+                serializedObject.targetObject.name));
             EditorGUILayout.EndHorizontal();
 
             var displayNameProperty = serializedObject.FindProperty("DisplayName");
@@ -51,12 +64,14 @@ public class KMMissionEditor : Editor
             EditorGUILayout.LabelField("Component Pools:");
             DrawModuleCountWarning();
 
-            SerializedProperty componentPoolListProperty = serializedObject.FindProperty("GeneratorSetting.ComponentPools");
+            SerializedProperty componentPoolListProperty =
+                serializedObject.FindProperty("GeneratorSetting.ComponentPools");
             EditorGUI.indentLevel++;
             for (int i = 0; i < componentPoolListProperty.arraySize; i++)
             {
                 DrawComponentPool(componentPoolListProperty, i);
             }
+
             EditorGUI.indentLevel--;
 
             EditorGUILayout.Separator();
@@ -73,14 +88,123 @@ public class KMMissionEditor : Editor
             EditorGUILayout.Separator();
             EditorGUILayout.Separator();
             EditorGUILayout.Separator();
+
+            //DMG String
+            EditorGUILayout.PrefixLabel("DMG Mission String");
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                dmgString = DMGMissionLoader.GetDmgString((KMMission) serializedObject.targetObject);
+            }
+
+            dmgString = EditorGUILayout.TextArea(dmgString, GUILayout.Height(15 * EditorGUIUtility.singleLineHeight));
+            if (GUILayout.Button("Reload DMG Mission String"))
+            {
+                expandedComponentPoolIndex = -1;
+                dmgString = DMGMissionLoader.GetDmgString((KMMission) serializedObject.targetObject);
+                errorMessage = null;
+            }
+
+            if (GUILayout.Button("Load from DMG Mission String"))
+            {
+                expandedComponentPoolIndex = -1;
+                validModification = LoadFromDMGString();
+            }
+
+            if (errorMessage != null)
+            {
+                GUIStyle s = new GUIStyle(EditorStyles.boldLabel);
+                s.normal.textColor = Color.red;
+                EditorGUILayout.LabelField("Error: " + errorMessage, s);
+            }
         }
 
-        serializedObject.ApplyModifiedProperties();
+        if (validModification)
+        {
+            serializedObject.ApplyModifiedProperties();
+        }
+    }
+
+
+    private bool LoadFromDMGString()
+    {
+        // Reset error message
+        errorMessage = null;
+
+        // Parse mission
+        KMMission mission;
+        try
+        {
+            mission = DMGMissionLoader.CreateMissionFromDmgString(dmgString);
+        }
+        catch (DMGMissionLoader.ParseException e)
+        {
+            errorMessage = e.Message;
+            return false;
+        }
+
+        // Load mission properties
+        serializedObject.FindProperty("PacingEventsEnabled").boolValue = mission.PacingEventsEnabled;
+        serializedObject.FindProperty("DisplayName").stringValue = mission.DisplayName;
+        serializedObject.FindProperty("Description").stringValue = mission.Description;
+
+        serializedObject.FindProperty("GeneratorSetting.TimeLimit").floatValue = mission.GeneratorSetting.TimeLimit;
+        serializedObject.FindProperty("GeneratorSetting.NumStrikes").intValue = mission.GeneratorSetting.NumStrikes;
+        serializedObject.FindProperty("GeneratorSetting.TimeBeforeNeedyActivation").intValue =
+            mission.GeneratorSetting.TimeBeforeNeedyActivation;
+        serializedObject.FindProperty("GeneratorSetting.OptionalWidgetCount").intValue =
+            mission.GeneratorSetting.OptionalWidgetCount;
+        serializedObject.FindProperty("GeneratorSetting.FrontFaceOnly").boolValue =
+            mission.GeneratorSetting.FrontFaceOnly;
+
+        // Delete current pools
+        var componentPools = serializedObject.FindProperty("GeneratorSetting.ComponentPools");
+        if (componentPools.arraySize > 0)
+        {
+            for (int i = componentPools.arraySize - 1; i >= 0; i--)
+            {
+                componentPools.DeleteArrayElementAtIndex(i);
+            }
+        }
+
+        // Save pools
+        var pools = mission.GeneratorSetting.ComponentPools;
+        for (int i = 0; i < pools.Count; i++)
+        {
+            componentPools.InsertArrayElementAtIndex(i);
+            var element = componentPools.GetArrayElementAtIndex(i);
+            var pool = pools[i];
+            element.FindPropertyRelative("Count").intValue = pool.Count;
+            element.FindPropertyRelative("SpecialComponentType").intValue = (int) pool.SpecialComponentType;
+
+            element.FindPropertyRelative("ComponentTypes").arraySize =
+                pool.ComponentTypes == null ? 0 : pool.ComponentTypes.Count;
+            if (pool.ComponentTypes != null)
+            {
+                for (int j = 0; j < pool.ComponentTypes.Count; j++)
+                {
+                    element.FindPropertyRelative("ComponentTypes").GetArrayElementAtIndex(j).intValue =
+                        (int) pool.ComponentTypes[j];
+                }
+            }
+
+            element.FindPropertyRelative("ModTypes").arraySize = pool.ModTypes == null ? 0 : pool.ModTypes.Count;
+            if (pool.ModTypes != null)
+            {
+                for (int j = 0; j < pool.ModTypes.Count; j++)
+                {
+                    element.FindPropertyRelative("ModTypes").GetArrayElementAtIndex(j).stringValue =
+                        pool.ModTypes[j];
+                }
+            }
+        }
+
+        return true;
     }
 
     protected void DrawModuleCountWarning()
     {
-        KMMission mission = (KMMission)serializedObject.targetObject;
+        KMMission mission = (KMMission) serializedObject.targetObject;
 
         if (mission != null && mission.GeneratorSetting != null)
         {
@@ -95,8 +219,10 @@ public class KMMissionEditor : Editor
             if (moduleCount > limit)
             {
                 EditorGUILayout.HelpBox(
-                    string.Format("Total module count is {0} (default limit is {1}). Mission may not work as you intend!", moduleCount,
-                    mission.GeneratorSetting.FrontFaceOnly ? limit + " when FrontFaceOnly=true" : limit.ToString()),
+                    string.Format(
+                        "Total module count is {0} (default limit is {1}). Mission may not work as you intend!",
+                        moduleCount,
+                        mission.GeneratorSetting.FrontFaceOnly ? limit + " when FrontFaceOnly=true" : limit.ToString()),
                     MessageType.Error);
             }
         }
@@ -112,7 +238,8 @@ public class KMMissionEditor : Editor
         var element = componentPools.GetArrayElementAtIndex(index);
         element.FindPropertyRelative("Count").intValue = 1;
         element.FindPropertyRelative("ComponentTypes").arraySize = 0;
-        element.FindPropertyRelative("SpecialComponentType").intValue = (int)KMComponentPool.SpecialComponentTypeEnum.None;
+        element.FindPropertyRelative("SpecialComponentType").intValue =
+            (int) KMComponentPool.SpecialComponentTypeEnum.None;
         element.FindPropertyRelative("ModTypes").arraySize = 0;
     }
 
@@ -145,7 +272,8 @@ public class KMMissionEditor : Editor
         }
     }
 
-    private void DrawComponentPoolEntry(int poolIndex, SerializedProperty componentPoolProperty, bool isOnlyComponentPool)
+    private void DrawComponentPoolEntry(int poolIndex, SerializedProperty componentPoolProperty,
+        bool isOnlyComponentPool)
     {
         EditorGUILayout.BeginHorizontal();
 
@@ -170,7 +298,11 @@ public class KMMissionEditor : Editor
             }
         }
 
-        if (isOnlyComponentPool) { GUI.enabled = false; } //Disable the delete button if this is only pool
+        if (isOnlyComponentPool)
+        {
+            GUI.enabled = false;
+        } //Disable the delete button if this is only pool
+
         if (GUILayout.Button("Delete", EditorStyles.miniButtonRight, GUILayout.Width(60)))
         {
             RemoveComponentPool(poolIndex);
@@ -180,7 +312,12 @@ public class KMMissionEditor : Editor
                 expandedComponentPoolIndex = -1;
             }
         }
-        if (isOnlyComponentPool) { GUI.enabled = true; } //Reenable the GUI going forward if needed
+
+        if (isOnlyComponentPool)
+        {
+            GUI.enabled = true;
+        } //Reenable the GUI going forward if needed
+
         EditorGUILayout.EndHorizontal();
     }
 
@@ -190,7 +327,7 @@ public class KMMissionEditor : Editor
     /// <param name="componentFlags"></param>
     private void DrawComponentPoolSummaryLabel(int poolIndex)
     {
-        KMMission mission = (KMMission)serializedObject.targetObject;
+        KMMission mission = (KMMission) serializedObject.targetObject;
         KMComponentPool pool = mission.GeneratorSetting.ComponentPools[poolIndex];
 
         string[] nonEmptyModNames = pool.ModTypes.Where(t => !string.IsNullOrEmpty(t)).ToArray();
@@ -262,7 +399,8 @@ public class KMMissionEditor : Editor
                         EditorGUILayout.LabelField("Solvable:");
                         for (int i = 0; i < componentTypes.Length; i++)
                         {
-                            KMComponentPool.ComponentTypeEnum componentType = (KMComponentPool.ComponentTypeEnum)componentTypes.GetValue(i);
+                            KMComponentPool.ComponentTypeEnum componentType =
+                                (KMComponentPool.ComponentTypeEnum) componentTypes.GetValue(i);
 
                             if ((componentType >= KMComponentPool.ComponentTypeEnum.Wires) &&
                                 (componentType < KMComponentPool.ComponentTypeEnum.NeedyVentGas))
@@ -270,6 +408,7 @@ public class KMMissionEditor : Editor
                                 DrawToggle(poolIndex, componentType);
                             }
                         }
+
                         EditorGUILayout.EndVertical();
 
 
@@ -279,7 +418,8 @@ public class KMMissionEditor : Editor
                             EditorGUILayout.LabelField("Needy:");
                             for (int i = 0; i < componentTypes.Length; i++)
                             {
-                                KMComponentPool.ComponentTypeEnum componentType = (KMComponentPool.ComponentTypeEnum)componentTypes.GetValue(i);
+                                KMComponentPool.ComponentTypeEnum componentType =
+                                    (KMComponentPool.ComponentTypeEnum) componentTypes.GetValue(i);
 
                                 if (componentType >= KMComponentPool.ComponentTypeEnum.NeedyVentGas &&
                                     componentType <= KMComponentPool.ComponentTypeEnum.NeedyKnob)
@@ -305,7 +445,7 @@ public class KMMissionEditor : Editor
     /// </summary>
     private void DrawToggle(int poolIndex, KMComponentPool.ComponentTypeEnum typeToToggle)
     {
-        KMMission mission = (KMMission)serializedObject.targetObject;
+        KMMission mission = (KMMission) serializedObject.targetObject;
         KMComponentPool componentPool = mission.GeneratorSetting.ComponentPools[poolIndex];
 
         bool previousValue = componentPool.ComponentTypes.Contains(typeToToggle);
@@ -337,12 +477,12 @@ public class KMMissionEditor : Editor
     /// </summary>
     private void DrawSpecialPicker(int poolIndex)
     {
-        KMMission mission = (KMMission)serializedObject.targetObject;
+        KMMission mission = (KMMission) serializedObject.targetObject;
         KMComponentPool componentPool = mission.GeneratorSetting.ComponentPools[poolIndex];
 
         KMComponentPool.SpecialComponentTypeEnum previousValue = componentPool.SpecialComponentType;
 
-        componentPool.SpecialComponentType = (KMComponentPool.SpecialComponentTypeEnum)EditorGUILayout.EnumPopup(
+        componentPool.SpecialComponentType = (KMComponentPool.SpecialComponentTypeEnum) EditorGUILayout.EnumPopup(
             "Type:",
             componentPool.SpecialComponentType, GUILayout.MinWidth(400));
 
@@ -360,9 +500,9 @@ public class KMMissionEditor : Editor
     /// </summary>
     private void DrawComponentSourcePicker(int poolIndex)
     {
-        string[] options = new string[] { "Base", "Mods", "Base and Mods" };
+        string[] options = new string[] {"Base", "Mods", "Base and Mods"};
 
-        KMMission mission = (KMMission)serializedObject.targetObject;
+        KMMission mission = (KMMission) serializedObject.targetObject;
         KMComponentPool componentPool = mission.GeneratorSetting.ComponentPools[poolIndex];
 
         KMComponentPool.ComponentSource previousValue = componentPool.AllowedSources;
@@ -392,9 +532,22 @@ public class KMMissionEditor : Editor
 
         switch (index)
         {
-            case 0: { componentPool.AllowedSources = KMComponentPool.ComponentSource.Base; } break;
-            case 1: { componentPool.AllowedSources = KMComponentPool.ComponentSource.Mods; } break;
-            case 2: { componentPool.AllowedSources = KMComponentPool.ComponentSource.Base | KMComponentPool.ComponentSource.Mods; } break;
+            case 0:
+            {
+                componentPool.AllowedSources = KMComponentPool.ComponentSource.Base;
+            }
+                break;
+            case 1:
+            {
+                componentPool.AllowedSources = KMComponentPool.ComponentSource.Mods;
+            }
+                break;
+            case 2:
+            {
+                componentPool.AllowedSources =
+                    KMComponentPool.ComponentSource.Base | KMComponentPool.ComponentSource.Mods;
+            }
+                break;
         }
     }
 
@@ -404,7 +557,7 @@ public class KMMissionEditor : Editor
     /// <param name="poolIndex"></param>
     protected void DrawModTypesList(int poolIndex)
     {
-        KMMission mission = (KMMission)serializedObject.targetObject;
+        KMMission mission = (KMMission) serializedObject.targetObject;
         KMComponentPool componentPool = mission.GeneratorSetting.ComponentPools[poolIndex];
         SerializedProperty componentPools = serializedObject.FindProperty("GeneratorSetting.ComponentPools");
 
@@ -412,8 +565,10 @@ public class KMMissionEditor : Editor
         EditorGUILayout.PropertyField(modTypesElement, true);
 
         // Trim whitespace from mod types
-        for (int i = 0; i < modTypesElement.arraySize; i++) {
-            modTypesElement.GetArrayElementAtIndex(i).stringValue = modTypesElement.GetArrayElementAtIndex(i).stringValue.Trim();
+        for (int i = 0; i < modTypesElement.arraySize; i++)
+        {
+            modTypesElement.GetArrayElementAtIndex(i).stringValue =
+                modTypesElement.GetArrayElementAtIndex(i).stringValue.Trim();
         }
 
         //Clear any special flags if needed
