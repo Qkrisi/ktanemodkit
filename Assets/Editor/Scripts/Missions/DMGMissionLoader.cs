@@ -46,6 +46,8 @@ public static class DMGMissionLoader
 
     private static readonly Regex ContinuationRegex = new Regex(@"\\[\r\n]+(///?)?\s+");
 
+    private static readonly Regex FileNameRegex = new Regex(@"^(\d+\. ?)?(?<SectionTitle>.+)(\.txt)?$");
+
     private static readonly string[] FactoryModes =
     {
         "static",
@@ -64,15 +66,24 @@ public static class DMGMissionLoader
     [MenuItem("Keep Talking ModKit/Missions/Load DMG Mission File", false, 9999)]
     public static void LoadDmgMission()
     {
+        // Create the mission folder if it does not exist
+        if (!AssetDatabase.IsValidFolder("Assets/" + MissionFolder))
+        {
+            AssetDatabase.CreateFolder("Assets", MissionFolder);
+        }
+
+        // File open dialog
         var path = EditorUtility.OpenFilePanel("Open DMG Mission", "", "");
         if (path.Length == 0) return;
 
-        Debug.LogFormat("Loading DMG Mission at '{0}'", path);
+        Debug.LogFormat("Loading DMG Mission at '{0}'...", path);
 
-        string dmgString = File.ReadAllText(path);
+        // Read file data
+        var dmgString = File.ReadAllText(path);
         KMMission mission;
         try
         {
+            // Create mission
             mission = CreateMissionFromDmgString(dmgString);
         }
         catch (ParseException e)
@@ -81,12 +92,17 @@ public static class DMGMissionLoader
             return;
         }
 
+        Debug.LogFormat("Successfully parsed DMG mission, creating asset...");
+
+        // Determine output path
         var missionPath = "Assets/" + MissionFolder + "/" +
                           (mission.DisplayName.Length == 0
                               ? "mission"
                               : mission.DisplayName) +
                           ".asset";
         var outputPath = missionPath;
+
+        // Check if the mission already exists, ask the user whether they want to overwrite the file or create a new file
         if (AssetImporter.GetAtPath(outputPath) != null && !EditorUtility.DisplayDialog("Confirm Overwrite",
             "The mission that you are trying to load already exists. Would you like to overwrite it?", "Overwrite",
             "Make New Mission"))
@@ -95,40 +111,43 @@ public static class DMGMissionLoader
                 AssetDatabase.GenerateUniqueAssetPath(missionPath);
         }
 
+        // Create and open the asset
         AssetDatabase.CreateAsset(mission, outputPath);
         AssetImporter.GetAtPath(outputPath).assetBundleName = AssetBundler.BUNDLE_FILENAME;
-
         EditorGUIUtility.PingObject(mission);
     }
 
     [MenuItem("Keep Talking ModKit/Missions/Load DMG Mission Folder", false, 10000)]
     public static void LoadDmgPack()
     {
+        // Create the mission folder if it does not exist
+        if (!AssetDatabase.IsValidFolder("Assets/" + MissionFolder))
+        {
+            AssetDatabase.CreateFolder("Assets", MissionFolder);
+        }
+
+        // Folder open dialog
         var packPath = EditorUtility.OpenFolderPanel("Open DMG Mission Folder", "", "");
         if (packPath.Length == 0) return;
 
-        var sectionPaths = Directory.GetDirectories(packPath);
-        var outputRoot = Path.GetFileName(packPath);
+        // Determine the output folder name
+        var outputFolderName = Path.GetFileName(packPath);
 
         // Sort section paths
-        var numberRegex = new Regex(@"^(?<Num>\d+)\..+");
-        sectionPaths = sectionPaths.OrderBy(path =>
-        {
-            var matches = numberRegex.Matches(Path.GetFileName(path));
-            if (matches.Count == 0)
-                return "zzzz" + Path.GetFileName(path);
-            return string.Format(@"{0:D4}", int.Parse(matches[0].Groups["Num"].Value));
-        }).ToArray();
+        var sectionPaths = Directory.GetDirectories(packPath);
+        sectionPaths = sectionPaths.OrderPaths().ToArray();
 
-        if (AssetDatabase.IsValidFolder("Assets/" + MissionFolder + "/" + outputRoot))
+        // Check for asset folder conflicts
+        if (AssetDatabase.IsValidFolder("Assets/" + MissionFolder + "/" + outputFolderName))
         {
             if (
-                EditorUtility.DisplayDialog("Confirm Overwrite",
-                    "The pack that you are trying to load already exists. Would you like to overwrite it?", "Overwrite",
+                EditorUtility.DisplayDialog("Confirm Rename",
+                    "The pack that you are trying to load already exists. Would you like to rename it?", "Rename",
                     "Cancel"))
             {
-                // todo: fix this
-                Directory.Delete("Assets/" + MissionFolder + "/" + outputRoot, true);
+                outputFolderName =
+                    Path.GetFileName(
+                        AssetDatabase.GenerateUniqueAssetPath("Assets/" + MissionFolder + "/" + outputFolderName));
             }
             else
             {
@@ -136,48 +155,49 @@ public static class DMGMissionLoader
             }
         }
 
-        if (!AssetDatabase.IsValidFolder("Assets/" + MissionFolder + "/" + outputRoot))
+        // Create the pack folder
+        if (!AssetDatabase.IsValidFolder("Assets/" + MissionFolder + "/" + outputFolderName))
         {
-            AssetDatabase.CreateFolder("Assets/" + MissionFolder, outputRoot);
+            AssetDatabase.CreateFolder("Assets/" + MissionFolder, outputFolderName);
         }
 
-        Debug.LogFormat("Loading DMG Mission Pack at '{0}'", packPath);
+        Debug.LogFormat("Loading DMG Mission Pack at '{0}'...", packPath);
 
+        // Load each section
         var sections = new List<KMMissionTableOfContents.Section>();
-
-        var nameRegex = new Regex(@"^(\d+\. ?)?(?<SectionTitle>.+)(\.txt)?$");
         foreach (var sectionPath in sectionPaths)
         {
+            // Create the section object
             var section = new KMMissionTableOfContents.Section
             {
-                Title = nameRegex.Matches(Path.GetFileName(sectionPath))[0].Groups["SectionTitle"].Value,
+                Title = FileNameRegex.Matches(Path.GetFileName(sectionPath))[0].Groups["SectionTitle"].Value,
                 MissionIDs = new List<string>()
             };
 
+            // Sort all missions
             var missionPaths = Directory.GetFiles(sectionPath);
-            missionPaths = missionPaths.OrderBy(path =>
-            {
-                var matches = numberRegex.Matches(Path.GetFileName(path));
-                if (matches.Count == 0)
-                    return "zzzz" + Path.GetFileName(path);
-                return string.Format(@"{0:D4}", int.Parse(matches[0].Groups["Num"].Value));
-            }).ToArray();
+            missionPaths = missionPaths.OrderPaths().ToArray();
 
+            // Get the section folder name
             var sectionFolderName = (sections.Count + 1) + ". " + section.Title;
-            var sectionRoot = "Assets/" + MissionFolder + "/" + outputRoot +
+            var sectionRoot = "Assets/" + MissionFolder + "/" + outputFolderName +
                               "/" + sectionFolderName;
 
+            // Create the section folder
             if (!AssetDatabase.IsValidFolder(sectionRoot))
             {
-                AssetDatabase.CreateFolder("Assets/" + MissionFolder + "/" + outputRoot, sectionFolderName);
+                AssetDatabase.CreateFolder("Assets/" + MissionFolder + "/" + outputFolderName, sectionFolderName);
             }
 
+            // Create each mission
             foreach (var missionPath in missionPaths)
             {
+                // Read the mission data
                 var dmgString = File.ReadAllText(missionPath);
                 KMMission mission;
                 try
                 {
+                    // Parse the DMG string
                     mission = CreateMissionFromDmgString(dmgString);
                 }
                 catch (ParseException e)
@@ -186,35 +206,40 @@ public static class DMGMissionLoader
                     continue;
                 }
 
+                // Create the mission asset
                 var outputPath = AssetDatabase.GenerateUniqueAssetPath(sectionRoot + "/" +
                                                                        (mission.DisplayName.Length == 0
                                                                            ? "mission"
                                                                            : mission.DisplayName) +
                                                                        ".asset");
                 AssetDatabase.CreateAsset(mission, outputPath);
+
+                // Add the mission to the section
                 section.MissionIDs.Add(mission.ID);
             }
 
+            // Add the section to the ToC
             sections.Add(section);
         }
 
         // Create the ToC
         var toc = ScriptableObject.CreateInstance<KMMissionTableOfContents>();
-        toc.name = outputRoot;
+        toc.name = outputFolderName;
         toc.Sections = sections;
-        var tocPath = "Assets/" + MissionFolder + "/" + outputRoot + "/TOC-" + outputRoot + ".asset";
+        var tocPath = "Assets/" + MissionFolder + "/" + outputFolderName + "/TOC-" + outputFolderName + ".asset";
 
+        // Create the ToC asset
         AssetDatabase.CreateAsset(toc, tocPath);
         AssetImporter.GetAtPath(tocPath).assetBundleName = AssetBundler.BUNDLE_FILENAME;
-
         EditorGUIUtility.PingObject(toc);
     }
 
     public static KMMission CreateMissionFromDmgString(string dmgString)
     {
         string errorMessage = null;
-        var matches = TokenRegex.Matches(ContinuationRegex.Replace(dmgString, ""));
 
+        // Parse the DMG string
+        var matches = TokenRegex.Matches(ContinuationRegex.Replace(dmgString, ""));
         if (matches.Count == 0)
         {
             throw new ParseException("invalid DMG string provided");
@@ -238,12 +263,13 @@ public static class DMGMissionLoader
             missionNameSpecified = false;
         int? factoryMode = null;
 
-        // Setup
+        // Mission setup
         var mission = ScriptableObject.CreateInstance<KMMission>();
         mission.PacingEventsEnabled = true;
         var pools = new List<KMComponentPool>();
         var missionDescription = "";
 
+        // New bomb handler
         NewBombDelegate newBomb = delegate
         {
             currentBomb = new KMGeneratorSetting {FrontFaceOnly = defaultFrontOnly};
@@ -252,8 +278,10 @@ public static class DMGMissionLoader
             pools = new List<KMComponentPool>();
         };
 
+        // Bomb validation handler
         ValidateBombDelegate validateBomb = delegate
         {
+            // Load the pools and setup default generator settings
             currentBomb.ComponentPools = pools;
             if (!timeSpecified) currentBomb.TimeLimit = defaultTime ?? currentBomb.GetComponentCount() * 120;
             if (!strikesSpecified)
@@ -264,8 +292,10 @@ public static class DMGMissionLoader
                 currentBomb.OptionalWidgetCount = defaultWidgetCount.Value;
         };
 
+        // Deal with each token
         foreach (Match match in matches)
         {
+            // Inline mission name
             if (match.Groups["MissionName"].Success)
             {
                 if (missionNameSpecified)
@@ -278,12 +308,14 @@ public static class DMGMissionLoader
 
                 mission.DisplayName = match.Groups["MissionName"].Value.Trim();
             }
+            // Inline description
             else if (match.Groups["DescriptionLine"].Success)
             {
                 missionDescription += match.Groups["DescriptionLine"].Value.Trim() + "\n";
 
                 mission.Description = missionDescription.Trim();
             }
+            // Multiline name + description
             else if (match.Groups["MissionName2"].Success && match.Groups["Description"].Success)
             {
                 if (missionNameSpecified)
@@ -298,6 +330,7 @@ public static class DMGMissionLoader
                 mission.Description =
                     match.Groups["Description"].Value.Split('\n').Select(line => line.Trim()).Join("\n");
             }
+            // Timer
             else if (match.Groups["Time1"].Success)
             {
                 if (timeSpecified)
@@ -308,6 +341,7 @@ public static class DMGMissionLoader
 
                 timeSpecified = true;
 
+                // Parse time
                 var time = match.Groups["Time3"].Success
                     ? int.Parse(match.Groups["Time1"].Value) * 3600 + int.Parse(match.Groups["Time2"].Value) * 60 +
                       int.Parse(match.Groups["Time3"].Value)
@@ -321,6 +355,7 @@ public static class DMGMissionLoader
                 if (currentBomb != null) currentBomb.TimeLimit = time;
                 else defaultTime = time;
             }
+            // Strike count
             else if (match.Groups["Strikes"].Success || match.Groups["Setting"].Value
                 .Equals("strikes", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -344,10 +379,12 @@ public static class DMGMissionLoader
                 if (currentBomb != null) currentBomb.NumStrikes = strikes;
                 else defaultStrikes = strikes;
             }
+            // Various settings
             else if (match.Groups["Setting"].Success)
             {
                 switch (match.Groups["Setting"].Value.ToLowerInvariant())
                 {
+                    // Needy timer
                     case "needyactivationtime":
                         if (needyActivationTimeSpecified)
                         {
@@ -367,6 +404,8 @@ public static class DMGMissionLoader
                         if (currentBomb != null) currentBomb.TimeBeforeNeedyActivation = needyActivationTime;
                         else defaultNeedyActivationTime = needyActivationTime;
                         break;
+
+                    // Widgets
                     case "widgets":
                         if (widgetCountSpecified)
                         {
@@ -391,10 +430,14 @@ public static class DMGMissionLoader
                         if (currentBomb != null) currentBomb.OptionalWidgetCount = widgetCount;
                         else defaultWidgetCount = widgetCount;
                         break;
+
+                    // Front only
                     case "frontonly":
                         if (currentBomb != null) currentBomb.FrontFaceOnly = true;
                         else defaultFrontOnly = true;
                         break;
+
+                    // No pacing
                     case "nopacing":
                         if (bombs != null && currentBomb != null)
                         {
@@ -404,6 +447,8 @@ public static class DMGMissionLoader
                         else mission.PacingEventsEnabled = false;
 
                         break;
+
+                    // Factory mode
                     case "factory":
                         if (bombs != null && currentBomb != null)
                         {
@@ -436,19 +481,24 @@ public static class DMGMissionLoader
                         break;
                 }
             }
+            // Module pools
             else if (match.Groups["ID"].Success)
             {
+                // Break on unmatched quote
                 if (match.Groups["Error"].Success)
                 {
                     errorMessage = "unclosed quote";
                     goto error;
                 }
 
+                // Create a new bomb
                 if (bombs == null)
                 {
                     if (currentBomb == null)
                     {
                         newBomb();
+
+                        // Setup the bomb
                         if (defaultTime.HasValue)
                         {
                             timeSpecified = true;
@@ -483,7 +533,8 @@ public static class DMGMissionLoader
                     }
                 }
 
-                KMComponentPool pool = new KMComponentPool
+                // Create the module pool
+                var pool = new KMComponentPool
                 {
                     Count = match.Groups["Count"].Success ? int.Parse(match.Groups["Count"].Value) : 1,
                     ComponentTypes = new List<KMComponentPool.ComponentTypeEnum>(),
@@ -495,9 +546,11 @@ public static class DMGMissionLoader
                     goto error;
                 }
 
-                string list = match.Groups["ID"].Value.Replace("\"", "").Replace("'", "").Trim();
+                // Parse module IDs
+                var list = match.Groups["ID"].Value.Replace("\"", "").Replace("'", "").Trim();
                 switch (list)
                 {
+                    // Module groups
                     case "ALL_SOLVABLE":
                         pool.AllowedSources =
                             KMComponentPool.ComponentSource.Base | KMComponentPool.ComponentSource.Mods;
@@ -524,11 +577,14 @@ public static class DMGMissionLoader
                         pool.AllowedSources = KMComponentPool.ComponentSource.Mods;
                         pool.SpecialComponentType = KMComponentPool.SpecialComponentTypeEnum.ALL_NEEDY;
                         break;
+
+                    // Individual module IDs
                     default:
                         foreach (var id in list.Split(',', '+').Select(s => s.Trim()))
                         {
                             switch (id)
                             {
+                                // Vanilla modules
                                 case "WireSequence":
                                     pool.ComponentTypes.Add(KMComponentPool.ComponentTypeEnum.WireSequence);
                                     break;
@@ -571,6 +627,8 @@ public static class DMGMissionLoader
                                 case "NeedyKnob":
                                     pool.ComponentTypes.Add(KMComponentPool.ComponentTypeEnum.NeedyKnob);
                                     break;
+
+                                // Modded modules
                                 default:
                                     pool.ModTypes.Add(id);
                                     break;
@@ -582,6 +640,7 @@ public static class DMGMissionLoader
 
                 pools.Add(pool);
             }
+            // Multiple Bombs starting point
             else if (match.Groups["Open"].Success)
             {
                 if (currentBomb != null)
@@ -600,6 +659,7 @@ public static class DMGMissionLoader
                 if (bombs == null) bombs = new List<KMGeneratorSetting>();
                 newBomb();
             }
+            // Multiple Bombs ending point
             else if (match.Groups["Close"].Success)
             {
                 if (currentBomb == null)
@@ -614,6 +674,7 @@ public static class DMGMissionLoader
             }
         }
 
+        // Check if no modules were provided
         if (bombs == null)
         {
             if (currentBomb == null)
@@ -630,7 +691,7 @@ public static class DMGMissionLoader
             errorMessage = "No solvable modules";
         }
 
-        // Parsing error
+        // Handle parsing error
         error:
         if (errorMessage != null)
         {
@@ -638,6 +699,7 @@ public static class DMGMissionLoader
             throw new ParseException(errorMessage);
         }
 
+        // Convert bombs to JSON for Multiple Bombs
         if (bombs != null)
         {
             mission.GeneratorSetting = bombs[0];
@@ -661,6 +723,7 @@ public static class DMGMissionLoader
             }
         }
 
+        // Apply factory mode
         if (factoryMode.HasValue)
             mission.GeneratorSetting.ComponentPools.Add(new KMComponentPool
             {
@@ -675,7 +738,7 @@ public static class DMGMissionLoader
     {
         string result = "";
 
-        // Comments
+        // Mission doc comments
         result += string.Format("//// {0}\n{1}\n\n",
             mission.DisplayName,
             mission.Description.Trim().Split('\n').Select(line => "/// " + line.Trim())
@@ -687,6 +750,7 @@ public static class DMGMissionLoader
             result += "nopacing\n";
         }
 
+        // Bomb settings
         result += GetBombSettingsString(mission.GeneratorSetting) + "\n";
 
         // Pools
@@ -694,6 +758,7 @@ public static class DMGMissionLoader
         List<KMGeneratorSetting> otherBombs = new List<KMGeneratorSetting>();
         mission.GeneratorSetting.ComponentPools.ForEach(pool =>
         {
+            // Factory mode
             if (pool.ModTypes.Contains("Factory Mode"))
             {
                 string factoryMode;
@@ -707,28 +772,34 @@ public static class DMGMissionLoader
 
                 result += string.Format("factory:{0}\n", factoryMode);
             }
+            // Multiple Bombs bomb count
             else if (pool.ModTypes.Contains("Multiple Bombs"))
             {
                 // ignore
             }
+            // Multiple Bombs bomb JSON
             else if (pool.ModTypes.Count == 1 && pool.ModTypes[0].StartsWith("Multiple Bombs"))
             {
                 otherBombs.Add(
                     JsonConvert.DeserializeObject<KMGeneratorSetting>(pool.ModTypes[0].Split(new[] {':'}, 3)[2]));
             }
+            // Normal pool
             else
             {
                 pools += GetPoolDmgString(pool) + "\n";
             }
         });
 
+        // Determine whether to output as Multiple Bombs or as a single bomb
         if (otherBombs.Count != 0)
         {
+            // Create bomb sets
             var bombSets = new List<Pair<int, KMGeneratorSetting>>
             {
                 new Pair<int, KMGeneratorSetting> {First = 1, Second = mission.GeneratorSetting}
             };
 
+            // Group equal bombs
             foreach (var bomb in otherBombs)
             {
                 if (bomb.SameMission(bombSets.Last().Second))
@@ -743,13 +814,12 @@ public static class DMGMissionLoader
 
             result = result.TrimEnd();
 
-            foreach (var bomb in bombSets)
-            {
-                result += "\n\n" + (bomb.First != 1 ? bomb.First + "*" : "") + "(\n" + Indent(
-                              (GetBombSettingsString(bomb.Second, mission.GeneratorSetting) + "\n\n" +
-                               bomb.Second.ComponentPools.FilterPools().Select(GetPoolDmgString).Join("\n")).Trim()) +
-                          "\n)";
-            }
+            // Output each bomb
+            result = bombSets.Aggregate(result, (current, bomb) =>
+                current + ("\n\n" + (bomb.First != 1 ? bomb.First + "*" : "")
+                                  + "(\n" + Indent((GetBombSettingsString(bomb.Second, mission.GeneratorSetting)
+                                                    + "\n\n" + bomb.Second.ComponentPools.FilterPools()
+                                                        .Select(GetPoolDmgString).Join("\n")).Trim()) + "\n)"));
         }
         else
         {
@@ -761,7 +831,7 @@ public static class DMGMissionLoader
 
     private static string GetBombSettingsString(KMGeneratorSetting bomb, KMGeneratorSetting compare = null)
     {
-        string result = "";
+        var result = "";
 
         // Time limit
         if (compare == null || Math.Abs(bomb.TimeLimit - compare.TimeLimit) > 0.1f)
@@ -804,14 +874,18 @@ public static class DMGMissionLoader
     {
         string source;
 
+        // Handle special pools
         switch (pool.SpecialComponentType)
         {
+            // Normal pool
             case KMComponentPool.SpecialComponentTypeEnum.None:
-                List<string> modules = new List<string>(pool.ModTypes);
+                var modules = new List<string>(pool.ModTypes);
                 modules.AddRange(pool.ComponentTypes.Select(vanillaModule => vanillaModule.ToString()));
 
                 source = modules.Join(",");
                 break;
+            
+            // Needy pool
             case KMComponentPool.SpecialComponentTypeEnum.ALL_NEEDY:
                 if ((pool.AllowedSources & KMComponentPool.ComponentSource.Base &
                      KMComponentPool.ComponentSource.Mods) != 0)
@@ -829,6 +903,8 @@ public static class DMGMissionLoader
                 }
 
                 break;
+            
+            // Solvable pool
             case KMComponentPool.SpecialComponentTypeEnum.ALL_SOLVABLE:
                 if ((pool.AllowedSources & KMComponentPool.ComponentSource.Base &
                      KMComponentPool.ComponentSource.Mods) != 0)
@@ -850,6 +926,7 @@ public static class DMGMissionLoader
                 return null;
         }
 
+        // Create pool string
         return pool.Count == 1 ? source : string.Format("{0}*{1}", pool.Count, source);
     }
 
@@ -857,20 +934,23 @@ public static class DMGMissionLoader
     {
         return str.Split('\n').Select(line => line.PadLeft(line.Length + spaces, ' ')).Join("\n");
     }
+}
 
-    private static bool SameMission(this KMGeneratorSetting a, KMGeneratorSetting b)
+internal static class DmgExtensions
+{
+    private static readonly Regex FileNumberRegex = new Regex(@"^(?<Num>\d+)\..+");
+
+    public static bool SameMission(this KMGeneratorSetting a, KMGeneratorSetting b)
     {
         return Mathf.RoundToInt(a.TimeLimit) == Mathf.RoundToInt(b.TimeLimit)
                && a.NumStrikes == b.NumStrikes
                && a.TimeBeforeNeedyActivation == b.TimeBeforeNeedyActivation
                && a.FrontFaceOnly == b.FrontFaceOnly
                && a.OptionalWidgetCount == b.OptionalWidgetCount
-               && SamePools(
-                   a.ComponentPools.FilterPools(),
-                   b.ComponentPools.FilterPools());
+               && a.ComponentPools.FilterPools().SamePools(b.ComponentPools.FilterPools());
     }
 
-    private static bool SamePools(List<KMComponentPool> a, List<KMComponentPool> b)
+    private static bool SamePools(this ICollection<KMComponentPool> a, IList<KMComponentPool> b)
     {
         return a.Count == b.Count && a.Select((pool, i) => pool.SamePool(b[i])).All(x => x);
     }
@@ -884,15 +964,26 @@ public static class DMGMissionLoader
                && a.ModTypes.ListEquals(b.ModTypes);
     }
 
-    private static bool ListEquals<T>(this List<T> a, List<T> b)
+    private static bool ListEquals<T>(this ICollection<T> a, IList<T> b)
     {
         return a.Count == b.Count && a.Select((e, i) => e.Equals(b[i])).All(x => x);
     }
 
-    private static List<KMComponentPool> FilterPools(this List<KMComponentPool> pools)
+    public static List<KMComponentPool> FilterPools(this IEnumerable<KMComponentPool> pools)
     {
         return pools.Where(pool =>
             !pool.ModTypes.Contains("Factory Mode") && !pool.ModTypes.Contains("Multiple Bombs") &&
             (pool.ModTypes.Count != 1 || !pool.ModTypes[0].StartsWith("Multiple Bombs"))).ToList();
+    }
+
+    public static IOrderedEnumerable<string> OrderPaths(this IEnumerable<string> paths)
+    {
+        return paths.OrderBy(path =>
+        {
+            var matches = FileNumberRegex.Matches(Path.GetFileName(path));
+            if (matches.Count == 0)
+                return "zzzz" + Path.GetFileName(path);
+            return string.Format(@"{0:D4}", int.Parse(matches[0].Groups["Num"].Value));
+        });
     }
 }

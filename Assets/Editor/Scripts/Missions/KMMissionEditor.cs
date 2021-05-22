@@ -98,7 +98,7 @@ public class KMMissionEditor : Editor
             }
 
             dmgString = EditorGUILayout.TextArea(dmgString, GUILayout.Height(15 * EditorGUIUtility.singleLineHeight));
-            if (GUILayout.Button("Reload DMG Mission String"))
+            if (GUILayout.Button("Refresh DMG Mission String"))
             {
                 expandedComponentPoolIndex = -1;
                 dmgString = DMGMissionLoader.GetDmgString((KMMission) serializedObject.targetObject);
