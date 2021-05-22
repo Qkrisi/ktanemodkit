@@ -73,7 +73,7 @@ public static class DMGMissionLoader
         }
 
         // File open dialog
-        var path = EditorUtility.OpenFilePanel("Open DMG Mission", "", "");
+        var path = EditorUtility.OpenFilePanel("Open DMG Mission", "", "txt");
         if (path.Length == 0) return;
 
         Debug.LogFormat("Loading DMG Mission at '{0}'...", path);
@@ -880,9 +880,12 @@ public static class DMGMissionLoader
             // Normal pool
             case KMComponentPool.SpecialComponentTypeEnum.None:
                 var modules = new List<string>(pool.ModTypes);
-                modules.AddRange(pool.ComponentTypes.Select(vanillaModule => vanillaModule.ToString()));
+                if (pool.ComponentTypes != null)
+                {
+                    modules.AddRange(pool.ComponentTypes.Select(vanillaModule => vanillaModule.ToString()));
+                }
 
-                source = modules.Join(",");
+                source = modules.Select(s => s.IndexOfAny(new[] { ',', ' ', '+' }) != -1 ? '"' + s + '"' : s).Join(",");
                 break;
             
             // Needy pool
