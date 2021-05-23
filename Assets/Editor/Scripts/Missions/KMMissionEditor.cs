@@ -353,7 +353,7 @@ public class CustomKMMissionEditor : Editor
             }
 
             dmgScrollPosition = EditorGUILayout.BeginScrollView(dmgScrollPosition, GUILayout.Height(15 * EditorGUIUtility.singleLineHeight));
-            dmgString = EditorGUILayout.TextArea(dmgString, GUILayout.MinHeight(20 * EditorGUIUtility.singleLineHeight));
+            dmgString = EditorGUILayout.TextArea(dmgString,  GUILayout.ExpandHeight(true));
             EditorGUILayout.EndScrollView();
             if (GUILayout.Button("Refresh DMG Mission String"))
             {
@@ -370,7 +370,7 @@ public class CustomKMMissionEditor : Editor
 
             if (GUILayout.Button("Open DMG Documentation"))
             {
-                Application.OpenURL("");
+                Application.OpenURL("https://github.com/red031000/ktane-DynamicMissionGenerator/blob/master/README.md");
             }
 
             if (errorMessage != null)
