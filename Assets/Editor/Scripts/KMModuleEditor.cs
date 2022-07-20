@@ -33,8 +33,18 @@ public class KMNeedyModuleEditor : Editor
         if (target != null)
         {
             serializedObject.Update();
-
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("CountdownTime"));
+            
+            var countdownTimeProperty = serializedObject.FindProperty("CountdownTime");
+            EditorGUILayout.PropertyField(countdownTimeProperty);
+            countdownTimeProperty.floatValue = Mathf.Max(countdownTimeProperty.floatValue, 0f);
+            
+            var resetDelayMinProperty = serializedObject.FindProperty("ResetDelayMin");
+            EditorGUILayout.PropertyField(resetDelayMinProperty);
+            resetDelayMinProperty.floatValue = Mathf.Max(resetDelayMinProperty.floatValue, 0f);
+            
+            var resetDelayMaxProperty = serializedObject.FindProperty("ResetDelayMax");
+            EditorGUILayout.PropertyField(resetDelayMaxProperty);
+            resetDelayMaxProperty.floatValue = Mathf.Max(resetDelayMaxProperty.floatValue, resetDelayMinProperty.floatValue);
 
             var moduleTypeProperty = serializedObject.FindProperty("ModuleType");
             EditorGUILayout.PropertyField(moduleTypeProperty);
