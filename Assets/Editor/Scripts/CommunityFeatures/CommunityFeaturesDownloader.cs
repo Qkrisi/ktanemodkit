@@ -37,7 +37,7 @@ public partial class CommunityFeaturesDownloader : EditorWindow
         window.Show();
     }
 
-    public const string VERSION = "2.0.3.0";
+    public const string VERSION = "2.0.3.1";
     public readonly Version PARSED_VERSION = new Version(VERSION);
 
     private static readonly string[] Sizes = {"KB", "MB", "GB", "TB" };
@@ -79,7 +79,7 @@ public partial class CommunityFeaturesDownloader : EditorWindow
     private readonly GUIStyle RichStyle = new GUIStyle();
     private readonly string[] DefaultSources = new string[]
     {
-        "https://qkrisi.xyz/ktane/kmplugins"
+        "https://qkrisi.hu/ktane/kmplugins"
     };
 
     private Vector2 ScrollPos;

@@ -215,7 +215,7 @@ public partial class CommunityFeaturesDownloader
                 if (CurrentRequest == null)
                 {
                     CurrentRequest = new WWW(
-                        String.Format("https://qkrisi.xyz/ktane/gh_releases/{0}/{1}/{2}", Repo, ResultsPerPage,
+                        String.Format("https://qkrisi.hu/ktane/gh_releases/{0}/{1}/{2}", Repo, ResultsPerPage,
                             PageNumber++));
                     return;
                 }
