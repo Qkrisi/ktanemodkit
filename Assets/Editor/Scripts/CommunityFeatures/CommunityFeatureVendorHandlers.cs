@@ -65,7 +65,7 @@ public partial class CommunityFeaturesDownloader
             };
         }
 
-        public abstract void Draw();
+        public abstract bool Draw();
 
         public virtual void Fetch()
         {
@@ -92,10 +92,11 @@ public partial class CommunityFeaturesDownloader
             return info;
         }
 
-        public override void Draw()
+        public override bool Draw()
         {
             GUILayout.Label(ConvertedBytes, GUILayout.ExpandWidth(false));
             GUILayout.Space(5);
+            return true;
         }
 
         public override void Fetch()
@@ -161,8 +162,10 @@ public partial class CommunityFeaturesDownloader
             return info;
         }
 
-        public override void Draw()
+        public override bool Draw()
         {
+            if(VersionTags == null || VersionTags.Length == 0)
+                return false;
             SelectedVersionIndex = EditorGUILayout.Popup(SelectedVersionIndex, VersionTags, GUILayout.Width(DropdownWidth));
             var update = false;
             if (SelectedVersionIndex != LastSelectedVersionIndex)
@@ -182,6 +185,7 @@ public partial class CommunityFeaturesDownloader
                     LastSelectedAssetIndex = SelectedAssetIndex;
                 }
             }
+            return true;
         }
 
         public override void Fetch()
@@ -217,6 +221,12 @@ public partial class CommunityFeaturesDownloader
                 }
                 if (!CurrentRequest.isDone)
                     return;
+                if(!string.IsNullOrEmpty(CurrentRequest.error))
+                {
+                    Debug.LogError(String.Format("Error while fetching GitHub releases for {0}: {1}", Repo, CurrentRequest.error));
+                    _ready = true;
+                    return;
+                }
                 var page = JsonConvert.DeserializeObject<ReleaseInfo[]>(CurrentRequest.text);
                 var count = page.Length;
                 if (!UseSourceCode)

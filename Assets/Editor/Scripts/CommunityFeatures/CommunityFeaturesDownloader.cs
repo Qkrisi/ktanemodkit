@@ -280,8 +280,10 @@ public partial class CommunityFeaturesDownloader : EditorWindow
                 {
                     if (CurrentFeature.ParsedMinVersion <= PARSED_VERSION && CurrentFeature.ParsedMaxVersion >= PARSED_VERSION)
                     {
-                        CurrentFeature.Handler.Draw();
-                        if (GUILayout.Button("Install", GUILayout.Width(DownloadButtonWidth)))
+                        var enableInstall = CurrentFeature.Handler.Draw();
+                        if(!enableInstall)
+                            GUILayout.Label("<color=red>No installation candidate found</color>", RichStyle, GUILayout.ExpandWidth(false));
+                        else if (GUILayout.Button("Install", GUILayout.Width(DownloadButtonWidth)))
                             SaveFile.InstalledPlugins.Add(CurrentFeature.Handler.Download());
                     }
                     else
