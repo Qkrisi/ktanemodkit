@@ -328,6 +328,35 @@ public class AssetBundler
                     Debug.LogFormat("Copying {0} to {1}", assetPath, dest);
 
                     File.Copy(assetPath, dest);
+
+                    if (ModConfig.DebugBuild)
+                    {
+                        var assetPath2 = assetPath.Substring(0, assetPath.Length - 4);
+                        var symbolExtension = ".mdb";
+                        if (!File.Exists(assetPath + symbolExtension) && !File.Exists(assetPath2 + symbolExtension))
+                        {
+                            symbolExtension = ".pdb";
+                            if (!File.Exists(assetPath + symbolExtension) && !File.Exists(assetPath2 + symbolExtension))
+                                symbolExtension = null;
+                        }
+
+                        if (!string.IsNullOrEmpty(symbolExtension))
+                        {
+                            if (File.Exists(assetPath + symbolExtension))
+                            {
+                                File.Copy(assetPath + symbolExtension, dest + symbolExtension);
+                                ModkitCompiler.ApplyDebugPatch(dest, dest, false);
+                                File.Delete(dest + symbolExtension);
+                            }
+                            else
+                            {
+                                var dest2 = dest.Substring(0, dest.Length - 4);
+                                File.Copy(assetPath2 + symbolExtension, dest2 + symbolExtension);
+                                ModkitCompiler.ApplyDebugPatch(dest, dest, false);
+                                File.Delete(dest2 + symbolExtension);
+                            }
+                        }
+                    }
                 }
             }
         }
