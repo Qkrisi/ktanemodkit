@@ -71,13 +71,13 @@ public class AssetBundler
     /// </summary>
     static BuildTarget target
     {
-		get
-		{
-			return Application.platform == RuntimePlatform.OSXEditor
-				? BuildTarget.StandaloneOSX
-				: BuildTarget.StandaloneWindows;
-		}
-	}
+        get
+        {
+            return Application.platform == RuntimePlatform.OSXEditor
+                ? BuildTarget.StandaloneOSX
+                : BuildTarget.StandaloneWindows;
+        }
+    }
 
     #endregion
 
@@ -282,7 +282,7 @@ public class AssetBundler
         //Next we need to grab some type references and use reflection to build things the way Unity does.
         //Note that EditorUtility.CompileCSharp will do *almost* exactly the same thing, but it unfortunately
         //defaults to "unity" rather than "2.0" when selecting the .NET support for the classlib_profile.
-        
+
         string[] defineArray = allDefines.Split(';');
 
         var proxyScripts = scriptAssetPaths.Where(path => path.StartsWith("Assets/Scripts/GameProxies")).ToArray();
@@ -293,7 +293,7 @@ public class AssetBundler
 
         if (success)
         {
-            if(proxyScripts.Length > 0)
+            if (proxyScripts.Length > 0)
                 managedReferences.Add(outputFolder + "/GameProxies.dll");
             ModkitCompiler.CompileAssembly(
                 scriptAssetPaths.Where(path => !path.StartsWith("Assets/Scripts/GameProxies")).ToArray(),
@@ -331,12 +331,11 @@ public class AssetBundler
 
                     if (ModConfig.DebugBuild)
                     {
-                        var assetPath2 = assetPath.Substring(0, assetPath.Length - 4);
                         var symbolExtension = ".mdb";
-                        if (!File.Exists(assetPath + symbolExtension) && !File.Exists(assetPath2 + symbolExtension))
+                        if (!File.Exists(assetPath + symbolExtension) && !File.Exists(Path.ChangeExtension(assetPath, symbolExtension)))
                         {
                             symbolExtension = ".pdb";
-                            if (!File.Exists(assetPath + symbolExtension) && !File.Exists(assetPath2 + symbolExtension))
+                            if (!File.Exists(assetPath + symbolExtension) && !File.Exists(Path.ChangeExtension(assetPath, symbolExtension)))
                                 symbolExtension = null;
                         }
 
@@ -350,10 +349,9 @@ public class AssetBundler
                             }
                             else
                             {
-                                var dest2 = dest.Substring(0, dest.Length - 4);
-                                File.Copy(assetPath2 + symbolExtension, dest2 + symbolExtension);
+                                File.Copy(Path.ChangeExtension(assetPath, symbolExtension), Path.ChangeExtension(dest, symbolExtension));
                                 ModkitCompiler.ApplyDebugPatch(dest, dest, false);
-                                File.Delete(dest2 + symbolExtension);
+                                File.Delete(Path.ChangeExtension(dest, symbolExtension));
                             }
                         }
                     }
